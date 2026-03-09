@@ -1,0 +1,12 @@
+{
+  "id": "logseq-move-block-db",
+  "title": "Move Block",
+  "description": "Workflowy-style Move To commands for Logseq Database (DB) graphs. Move blocks (with children) to any page or journal via slash commands, keyboard shortcut, or context menu.",
+  "author": "Joemnewton",
+  "repo": "Joemnewton/logseq-move-block-db",
+  "icon": "./icon.svg",
+  "theme": false,
+  "effect": false,
+  "web": false,
+  "sponsors": []
+}

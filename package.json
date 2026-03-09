@@ -1,0 +1,20 @@
+{
+  "name": "logseq-move-block-db",
+  "version": "1.0.0",
+  "description": "Move blocks to any page or journal with slash commands, shortcuts, or context menu.",
+  "main": "index.js",
+  "author": "Joemnewton",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Joemnewton/logseq-move-block-db.git"
+  },
+  "homepage": "https://github.com/Joemnewton/logseq-move-block-db",
+  "license": "MIT",
+  "logseq": {
+    "id": "logseq-move-block-db",
+    "title": "Move Block",
+    "icon": "./icon.svg",
+    "description": "Move blocks to any page or journal with slash commands.",
+    "repo": "Joemnewton/logseq-move-block-db"
+  }
+}
