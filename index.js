@@ -7,6 +7,9 @@
  *
  * NOTE: This plugin is for Logseq Database (DB) graphs only.
  *
+ * v1.1.0:
+ * - Multi-block move: select multiple blocks and move them all at once
+ *
  * v1.0.0:
  * - Slash commands: /move, /move to page, /move to today, /move to journal
  * - Keyboard shortcut: Cmd+Shift+M (Mac) / Ctrl+Shift+M (Windows/Linux)
@@ -20,7 +23,7 @@
 
 // ─── Module State ───────────────────────────────────────────────────────────
 
-let pendingBlockUuid = null;      // UUID of block waiting to be moved
+let pendingBlockUuids = [];       // UUIDs of blocks waiting to be moved
 let cachedPages = [];             // Cached page list (refreshed per modal open)
 let recentDestinations = [];      // Session-local recent move targets
 let selectedIndex = 0;            // Currently highlighted result in modal
@@ -36,7 +39,7 @@ const MAX_VISIBLE_RESULTS = 10;
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 function main() {
-  console.log('📦 Move Block plugin v1.0.0 (DB Version) starting...');
+  console.log('📦 Move Block plugin v1.1.0 (DB Version) starting...');
 
   // ── Settings ──────────────────────────────────────────────────────────────
 
@@ -224,25 +227,25 @@ function main() {
 
   logseq.Editor.registerSlashCommand('move', async (e) => {
     console.log('📦 /move command triggered, event:', e);
-    if (e && e.uuid) pendingBlockUuid = e.uuid;
+    if (e && e.uuid) pendingBlockUuids = [e.uuid];
     await openMoveModal('');
   });
 
   logseq.Editor.registerSlashCommand('move to page', async (e) => {
     console.log('📦 /move to page command triggered, event:', e);
-    if (e && e.uuid) pendingBlockUuid = e.uuid;
+    if (e && e.uuid) pendingBlockUuids = [e.uuid];
     await openMoveModal('pages');
   });
 
   logseq.Editor.registerSlashCommand('move to today', async (e) => {
     console.log('📦 /move to today command triggered, event:', e);
-    if (e && e.uuid) pendingBlockUuid = e.uuid;
+    if (e && e.uuid) pendingBlockUuids = [e.uuid];
     await moveCurrentBlockToToday();
   });
 
   logseq.Editor.registerSlashCommand('move to journal', async (e) => {
     console.log('📦 /move to journal command triggered, event:', e);
-    if (e && e.uuid) pendingBlockUuid = e.uuid;
+    if (e && e.uuid) pendingBlockUuids = [e.uuid];
     await openMoveModal('journals');
   });
 
@@ -264,7 +267,7 @@ function main() {
 
   logseq.Editor.registerBlockContextMenuItem('Move to...', async ({ uuid }) => {
     console.log('📦 Move to... context menu triggered for block:', uuid);
-    pendingBlockUuid = uuid;
+    pendingBlockUuids = [uuid];
     await openMoveModal('');
   });
 
@@ -278,7 +281,7 @@ function main() {
 
   logseq.beforeunload(async () => {
     console.log('👋 Move Block plugin unloading...');
-    pendingBlockUuid = null;
+    pendingBlockUuids = [];
     cachedPages = [];
     recentDestinations = [];
     modalVisible = false;
@@ -295,27 +298,30 @@ function main() {
  */
 async function openMoveModal(filter) {
   try {
-    // Get the current block if we don't have one set from slash command or context menu
-    if (!pendingBlockUuid) {
-      // Try getCurrentBlock first (works when editing)
-      let currentBlock = await logseq.Editor.getCurrentBlock();
+    // Get the current block(s) if we don't have any set from slash command or context menu
+    if (pendingBlockUuids.length === 0) {
+      // Try getSelectedBlocks first (works when multiple blocks are highlighted)
+      const selected = await logseq.Editor.getSelectedBlocks();
+      if (selected && selected.length > 0) {
+        pendingBlockUuids = selected.map(b => b.uuid).filter(Boolean);
+      }
 
-      // Fallback: try getSelectedBlocks (works when block is selected but not editing)
-      if (!currentBlock) {
-        const selected = await logseq.Editor.getSelectedBlocks();
-        if (selected && selected.length > 0) {
-          currentBlock = selected[0];
+      // Fallback: try getCurrentBlock (works when editing a single block)
+      if (pendingBlockUuids.length === 0) {
+        const currentBlock = await logseq.Editor.getCurrentBlock();
+        if (currentBlock) {
+          pendingBlockUuids = [currentBlock.uuid];
         }
       }
 
-      if (!currentBlock) {
+      if (pendingBlockUuids.length === 0) {
         await logseq.UI.showMsg('No block selected. Place your cursor in a block first.', 'warning');
         return;
       }
-      pendingBlockUuid = currentBlock.uuid;
     }
 
-    console.log('📦 Opening move modal for block:', pendingBlockUuid);
+    const blockCount = pendingBlockUuids.length;
+    console.log(`📦 Opening move modal for ${blockCount} block(s):`, pendingBlockUuids);
 
     // Fetch all pages
     modalFilter = filter;
@@ -341,7 +347,7 @@ async function openMoveModal(filter) {
   } catch (error) {
     console.error('❌ Error opening move modal:', error);
     await logseq.UI.showMsg('Failed to open move dialog.', 'warning');
-    pendingBlockUuid = null;
+    pendingBlockUuids = [];
   }
 }
 
@@ -355,7 +361,7 @@ function renderModal(searchText) {
     <div class="move-block-overlay" data-on-click="closeModal">
       <div class="move-block-modal" onclick="event.stopPropagation()">
         <div class="move-block-header">
-          <div class="move-block-title">Move block to${modalFilter === 'pages' ? ' page' : modalFilter === 'journals' ? ' journal' : ''}...</div>
+          <div class="move-block-title">Move ${pendingBlockUuids.length > 1 ? pendingBlockUuids.length + ' blocks' : 'block'} to${modalFilter === 'pages' ? ' page' : modalFilter === 'journals' ? ' journal' : ''}...</div>
           <input
             class="move-block-input"
             type="text"
@@ -596,7 +602,7 @@ function updateSelection() {
  */
 function hideModal() {
   modalVisible = false;
-  // NOTE: Do NOT clear pendingBlockUuid here — performMove() handles that
+  // NOTE: Do NOT clear pendingBlockUuids here — performMove() handles that
   filteredResults = [];
   selectedIndex = 0;
   logseq.provideUI({
@@ -639,15 +645,16 @@ async function fetchPages() {
 // ─── Move Operation ─────────────────────────────────────────────────────────
 
 /**
- * Perform the move: get block, create at destination, delete original
+ * Perform the move: gather all source blocks, create at destination, delete originals
+ * Supports moving one or multiple selected blocks.
  * @param {string} destPageName - Destination page name
  */
 async function performMove(destPageName) {
-  const sourceUuid = pendingBlockUuid;
-  pendingBlockUuid = null;
+  const sourceUuids = [...pendingBlockUuids];
+  pendingBlockUuids = [];
 
-  if (!sourceUuid) {
-    console.error('❌ No block UUID to move');
+  if (sourceUuids.length === 0) {
+    console.error('❌ No block UUIDs to move');
     await logseq.UI.showMsg('No block selected to move.', 'warning');
     return;
   }
@@ -659,93 +666,111 @@ async function performMove(destPageName) {
   }
 
   try {
-    console.log(`📦 Moving block ${sourceUuid} to "${destPageName}"...`);
+    const blockCount = sourceUuids.length;
+    const blockLabel = blockCount > 1 ? `${blockCount} blocks` : 'block';
+    console.log(`📦 Moving ${blockLabel} to "${destPageName}"...`);
 
     // Show "Moving..." indicator
-    logseq.UI.showMsg('Moving block...', 'info', { timeout: 10000, key: 'move-block-progress' });
+    logseq.UI.showMsg(`Moving ${blockLabel}...`, 'info', { timeout: 10000, key: 'move-block-progress' });
 
-    // Step 1: Get the source block with children
-    const sourceBlock = await logseq.Editor.getBlock(sourceUuid, { includeChildren: true });
-    if (!sourceBlock) {
-      await logseq.UI.showMsg('Block not found. It may have been deleted.', 'warning');
+    // Phase 1: Gather all source block data upfront
+    const sourceBlocks = [];
+    for (const uuid of sourceUuids) {
+      const block = await logseq.Editor.getBlock(uuid, { includeChildren: true });
+      if (!block) {
+        console.warn(`⚠️ Block ${uuid} not found, skipping`);
+        continue;
+      }
+
+      const content = block.title || block.content || '';
+      if (!content && (!block.children || block.children.length === 0)) {
+        console.warn(`⚠️ Block ${uuid} is empty, skipping`);
+        continue;
+      }
+
+      let props = {};
+      try {
+        props = await logseq.Editor.getBlockProperties(uuid) || {};
+      } catch (e) {
+        console.warn('⚠️ Could not read block properties:', e);
+      }
+
+      sourceBlocks.push({ uuid, block, content, props });
+    }
+
+    if (sourceBlocks.length === 0) {
+      await logseq.UI.showMsg('No valid blocks to move.', 'warning');
       return;
     }
 
-    // Get block content (DB version uses title)
-    const blockContent = sourceBlock.title || sourceBlock.content || '';
-    if (!blockContent && (!sourceBlock.children || sourceBlock.children.length === 0)) {
-      await logseq.UI.showMsg('Block is empty. Nothing to move.', 'warning');
-      return;
-    }
-
-    // Check if trying to move to the same page
-    const currentPage = sourceBlock.page;
+    // Check if trying to move to the same page (check first block)
+    const currentPage = sourceBlocks[0].block.page;
     if (currentPage) {
       const pageName = typeof currentPage === 'object' ? (currentPage.name || currentPage.originalName) : currentPage;
       if (pageName && pageName.toLowerCase() === destPageName.toLowerCase()) {
-        await logseq.UI.showMsg('Block is already on this page.', 'warning');
+        const msg = sourceBlocks.length > 1 ? 'Blocks are already on this page.' : 'Block is already on this page.';
+        await logseq.UI.showMsg(msg, 'warning');
         return;
       }
     }
 
-    // Step 2: Get source block properties
-    let sourceProperties = {};
-    try {
-      sourceProperties = await logseq.Editor.getBlockProperties(sourceUuid) || {};
-    } catch (e) {
-      console.warn('⚠️ Could not read block properties:', e);
-    }
-
-    // Step 3: Create block on destination page
+    // Phase 2: Create new blocks at destination
     const settings = logseq.settings || {};
     const position = settings.movePosition || 'bottom';
 
-    let newBlock;
-    if (position === 'top') {
-      newBlock = await logseq.Editor.prependBlockInPage(destPageName, blockContent);
-    } else {
-      newBlock = await logseq.Editor.appendBlockInPage(destPageName, blockContent);
-    }
+    // For "top" position, reverse order so blocks end up in original order after prepending
+    const blocksToCreate = position === 'top' ? [...sourceBlocks].reverse() : sourceBlocks;
 
-    if (!newBlock) {
-      await logseq.UI.showMsg('Failed to create block on destination page. The page may not exist.', 'warning');
-      return;
-    }
+    for (const src of blocksToCreate) {
+      let newBlock;
+      if (position === 'top') {
+        newBlock = await logseq.Editor.prependBlockInPage(destPageName, src.content);
+      } else {
+        newBlock = await logseq.Editor.appendBlockInPage(destPageName, src.content);
+      }
 
-    console.log(`✅ Created new block ${newBlock.uuid} on "${destPageName}"`);
+      if (!newBlock) {
+        console.warn(`⚠️ Failed to create block on destination: ${src.content.substring(0, 50)}`);
+        continue;
+      }
 
-    // Step 4: Copy properties to new block
-    await copyProperties(newBlock.uuid, sourceProperties);
+      console.log(`✅ Created new block ${newBlock.uuid} on "${destPageName}"`);
 
-    // Step 5: Recursively create children
-    if (sourceBlock.children && sourceBlock.children.length > 0) {
-      await insertChildrenRecursively(sourceBlock.children, newBlock.uuid);
-    }
+      // Copy properties
+      await copyProperties(newBlock.uuid, src.props);
 
-    // Step 6: Collapse the moved block if it has children
-    if (sourceBlock.children && sourceBlock.children.length > 0) {
-      try {
-        await logseq.Editor.setBlockCollapsed(newBlock.uuid, true);
-      } catch (e) {
-        console.warn('⚠️ Could not collapse block:', e);
+      // Recursively create children and collapse
+      if (src.block.children && src.block.children.length > 0) {
+        await insertChildrenRecursively(src.block.children, newBlock.uuid);
+        try {
+          await logseq.Editor.setBlockCollapsed(newBlock.uuid, true);
+        } catch (e) {
+          console.warn('⚠️ Could not collapse block:', e);
+        }
       }
     }
 
-    // Step 7: Delete original block
-    await logseq.Editor.removeBlock(sourceUuid);
-    console.log(`🗑️ Deleted original block ${sourceUuid}`);
+    // Phase 3: Delete all original blocks
+    for (const src of sourceBlocks) {
+      await logseq.Editor.removeBlock(src.uuid);
+      console.log(`🗑️ Deleted original block ${src.uuid}`);
+    }
 
-    // Step 8: Track recent destination
+    // Track recent destination
     addRecentDestination(destPageName);
 
-    // Step 9: Dismiss the "Moving..." toast, then show confirmation
+    // Dismiss the "Moving..." toast, then show confirmation
     logseq.UI.showMsg('', 'info', { timeout: 1, key: 'move-block-progress' });
     const showConfirmation = settings.showConfirmation !== false;
     if (showConfirmation) {
-      await logseq.UI.showMsg(`Moved to "${destPageName}"`, 'success', { timeout: 3000 });
+      const movedCount = sourceBlocks.length;
+      const msg = movedCount > 1
+        ? `Moved ${movedCount} blocks to "${destPageName}"`
+        : `Moved to "${destPageName}"`;
+      await logseq.UI.showMsg(msg, 'success', { timeout: 3000 });
     }
 
-    // Step 10: Navigate to destination page if setting enabled
+    // Navigate to destination page if setting enabled
     if (settings.navigateAfterMove === 'navigate') {
       try {
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -755,7 +780,7 @@ async function performMove(destPageName) {
       }
     }
 
-    console.log(`✅ Successfully moved block to "${destPageName}"`);
+    console.log(`✅ Successfully moved ${sourceBlocks.length} block(s) to "${destPageName}"`);
 
   } catch (error) {
     console.error('❌ Error moving block:', error);
@@ -851,14 +876,14 @@ async function copyProperties(targetUuid, properties) {
  */
 async function moveCurrentBlockToToday() {
   try {
-    // pendingBlockUuid may already be set by slash command handler
-    if (!pendingBlockUuid) {
+    // pendingBlockUuids may already be set by slash command handler
+    if (pendingBlockUuids.length === 0) {
       const currentBlock = await logseq.Editor.getCurrentBlock();
       if (!currentBlock) {
         await logseq.UI.showMsg('No block selected. Place your cursor in a block first.', 'warning');
         return;
       }
-      pendingBlockUuid = currentBlock.uuid;
+      pendingBlockUuids = [currentBlock.uuid];
     }
 
     const today = getTodayJournalName();

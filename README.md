@@ -1,7 +1,7 @@
 # Move Block (Database)
 
 > **Workflowy-style "Move To" for Logseq Database graphs.**
-> Move blocks (with all children) to any page or journal day via slash commands, keyboard shortcut, or context menu.
+> Move one or multiple blocks (with all children) to any page or journal day via slash commands, keyboard shortcut, or context menu.
 
 ![Move Block Demo](./screenshots/demo.gif)
 
@@ -19,6 +19,7 @@
 | `/move to journal` | Search modal filtered to journal pages |
 | `Cmd+Shift+M` | Keyboard shortcut (Mac) / `Ctrl+Shift+M` (Windows/Linux) |
 | Right-click menu | "Move to..." context menu on any block |
+| Multi-block move | Select multiple blocks and move them all at once |
 | Full tree move | Block and all nested children move together |
 | Auto-collapse | Moved blocks with children are collapsed at the destination |
 | Property preservation | Block properties are copied to the destination |
@@ -74,15 +75,21 @@ Logseq has a built-in `Move blocks` shortcut (`Cmd+Shift+M`) that conflicts with
 
 ## Usage
 
-### Move via slash command
+### Move a single block
 1. Place your cursor in the block you want to move
 2. Type `/move` (or `/move to page`, `/move to today`, `/move to journal`)
-3. A search modal appears - type to filter pages
+3. A search modal appears — type to filter pages
 4. Use arrow keys to navigate, Enter to select
 5. Block (and all children) moves to the selected page
 
+### Move multiple blocks
+1. Select multiple blocks by holding `Shift` and clicking
+2. Press `Cmd+Shift+M` (Mac) or `Ctrl+Shift+M` (Windows/Linux)
+3. The modal shows "Move X blocks to..."
+4. Select a destination — all selected blocks move together in order
+
 ### Move via keyboard shortcut
-1. Place your cursor in the block
+1. Place your cursor in a block (or select multiple)
 2. Press `Cmd+Shift+M` (Mac) or `Ctrl+Shift+M` (Windows/Linux)
 3. Select destination in the modal
 

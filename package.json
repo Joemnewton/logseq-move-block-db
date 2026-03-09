@@ -1,6 +1,6 @@
 {
   "name": "logseq-move-block-db",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Move blocks to any page or journal with slash commands, shortcuts, or context menu.",
   "main": "index.js",
   "author": "Joemnewton",

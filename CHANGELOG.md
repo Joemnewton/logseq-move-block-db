@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.0 - 2026-03-09
+
+### Multi-Block Move
+
+- Select multiple blocks and move them all at once
+- Modal title shows block count ("Move 3 blocks to...")
+- Progress and confirmation toasts reflect multi-block count
+- Blocks maintain their original order at the destination
+- Replaced PayPal donate link (removed Buy Me a Coffee)
+
 ## v1.0.0 - 2026-03-09
 
 ### Initial Release
